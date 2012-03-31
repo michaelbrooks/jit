@@ -212,6 +212,191 @@ $jit.Icicle = new Class({
   },
 
   /* 
+    Method: slide 
+    
+    Animates from the current location to the given node.
+    Combination of enter() and exit().
+    
+     Parameters:
+     
+     node - (object) A <Graph.Node>.
+     beforeAnimate - a callback that will be executed before beginning the animation.
+     onComplete - a callback that will be executed after each stage of animation
+  
+   */
+  slide: function (node, beforeAnimate, onComplete) {
+    
+    if (this.busy)
+      return;
+    this.busy = true;
+    
+    var that = this,
+    config = this.config;
+    
+    var callback = {
+      onComplete: function() {
+        //compute positions of newly inserted nodes
+        if(config.request)
+          that.compute();
+
+        if(config.animate) {
+            var oldFocus = that.clickedNode;
+            
+            //find the common ancestor between node and oldFocus
+            function getParents(node) {
+                var results = [node];
+                var parents = node.getParents();
+                while (parents.length > 0) {
+                    results.push(parents[0]);
+                    parents = parents[0].getParents();
+                }
+                results.reverse();
+                return results;
+            }
+            
+            var oldNodeParents = getParents(oldFocus);
+            var newNodeParents = getParents(node);
+            var commonAncestorIndex = 0;
+            for (var i = 0; i < oldNodeParents.length && i < newNodeParents.length; i++) {
+                if (oldNodeParents[i].id != newNodeParents[i].id) {
+                    break;
+                } else {
+                    commonAncestorIndex = i;
+                }
+            }
+            commonAncestor = oldNodeParents[commonAncestorIndex];
+            oldNodeParents = oldNodeParents.slice(commonAncestorIndex, oldNodeParents.length - 1);
+            newNodeParents = newNodeParents.slice(commonAncestorIndex + 1);
+            
+            var outs = oldNodeParents;
+            var ins = newNodeParents;
+            
+            complete = function() {
+                that.busy = false;
+                if (onComplete) onComplete();
+            }
+            
+            if (outs.length > 0 || ins.length > 0) {
+                //Calculate the animation times: 1200 plus a linear scale rate above 1 step
+                var totalTime = 1200 + 1500 * (outs.length + ins.length - 1) * 0.2;
+                
+                var actionTime = totalTime / (outs.length + ins.length);
+                var moveTime = actionTime * 0.66;
+                var fadeTime = actionTime - moveTime;
+                
+                var zoomOut = function(parent, onComplete) {
+                    
+                    var previousClickedNode = that.clickedNode;
+                    that.clickedNode = parent;
+                    that.compute('end');
+                    
+                    if (beforeAnimate) beforeAnimate(that.clickedNode);
+                    that.fx.animate({
+                        transition: $jit.Trans.linear,
+                        modes:['linear', 'node-property:width:height', 'label-property:size:color'],
+                        duration: moveTime,
+                        onComplete: function() {
+                            //animate the parent subtree
+                            that.clickedNode = parent;
+                            
+                            parent.setData('alpha', 1, 'end');
+                            if (outs.length == 0) {
+                                if (ins.length > 0) {
+                                    //maybe set the next zoom in node to fade in
+                                    Graph.Util.eachSubgraph(ins[0], function(n) {
+                                        n.setData('alpha', 1, 'end');
+                                    }, "ignore");
+                                } else {
+                                    //just show the whole thing
+                                    Graph.Util.eachSubgraph(parent, function(node) {
+                                        node.setData('alpha', 1, 'end');
+                                    }, "ignore");
+                                }
+                            }
+                            
+                            
+                            that.fx.animate({
+                                duration: fadeTime,
+                                modes:['node-property:alpha'],
+                                onComplete: function() {
+                                    that.clickedNode = parent;
+                                    that.compute();
+                                    that.plot();
+                                
+                                    if (outs.length > 0) {
+                                        zoomOut(outs.pop(), onComplete);
+                                    } else if (ins.length > 0) {
+                                        zoomIn(ins.shift(), onComplete);
+                                    } else {
+                                        if (onComplete) onComplete();
+                                    }
+                                }
+                            });
+                        }
+                    });
+                }
+                
+                var zoomIn = function(child, onComplete) {
+                    
+                    var previousClickedNode = that.clickedNode;
+                    that.graph.nodeList.setDataset(['end'], {
+                        'alpha': [0] //fade nodes
+                    });
+
+                    Graph.Util.eachSubgraph(child, function(n) {
+                        n.setData('alpha', 1, 'end');
+                    }, "ignore");
+
+                    that.fx.animate({
+                        duration: fadeTime,
+                        modes:['node-property:alpha'],
+                        onComplete: function() {
+                            that.clickedNode = child;
+                            that.compute('end');
+                            
+                            if (beforeAnimate) beforeAnimate(that.clickedNode);
+                            that.fx.animate({
+                                transition: $jit.Trans.linear,
+                                modes:['linear', 'node-property:width:height', 'label-property:size:color'],
+                                duration: moveTime,
+                                onComplete: function() {
+                                    that.clickedNode = child;
+                                    if (ins.length > 0) {
+                                        zoomIn(ins.shift(), onComplete);
+                                    } else {
+                                        if (onComplete) onComplete();
+                                    }
+                                }
+                            });
+                        }
+                    });
+                }
+            
+                if (outs.length > 0) {
+                    zoomOut(outs.pop(), complete);
+                } else if (ins.length > 0) {
+                    zoomIn(ins.shift(), complete);
+                }
+            } else {
+                complete();
+            }
+            
+        } else {
+          that.clickedNode = node;
+          that.busy = false;
+          that.refresh();
+        }
+      }
+    };
+
+    if(config.request) {
+      this.requestNodes(clickedNode, callback);
+    } else {
+      callback.onComplete();
+    }
+  },
+  
+  /* 
     Method: out 
     
     Sets the parent node of the current selected node as root.
