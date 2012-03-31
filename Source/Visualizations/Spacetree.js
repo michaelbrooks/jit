@@ -484,6 +484,8 @@ $jit.ST= (function() {
                 this.op.sum(subtree, $.extend({ type: 'replot' }, onComplete || {}));
             } else if (method == 'animate') {
                 this.op.sum(subtree, $.extend({ type: 'fade:seq' }, onComplete || {}));
+            } else if (method == 'nothing') {
+                this.op.sum(subtree, $.extend({ type: 'nothing'}, onComplete || {}));
             }
         },
     
@@ -518,6 +520,8 @@ $jit.ST= (function() {
                 this.op.removeNode(subids, $.extend({ type: 'replot' }, onComplete || {}));
             } else if (method == 'animate') {
                 this.op.removeNode(subids, $.extend({ type: 'fade:seq'}, onComplete || {}));
+            } else if (method == 'nothing') {
+                this.op.removeNode(subids, $.extend({ type: 'nothing'}, onComplete || {}));
             }
         },
     
